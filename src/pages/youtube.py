@@ -34,6 +34,13 @@ class YouTubeDownloader(Page):
 
     SEPARATOR = '\\' if platform.system() == 'Windows' else '/'
 
+    ACCEPTED_LINKS = [
+        "youtube.com",
+        "youtube.no",
+        "youtube.nl",
+        "youtu.be"
+    ]
+
     def __init__(self, state) -> object:
         # Might be useful in the future
         self.base_path = Path().cwd()
@@ -46,23 +53,38 @@ class YouTubeDownloader(Page):
             YouTubeDownloader.STREAMLIT_STATIC_PATH, YouTubeDownloader.DOWNLOADS_PATH,
         ] if not folder_path.is_dir()]
 
+    def __del__(self):
+        """The Python Deconstructor
+
+        Added Func to ensure the clearance of temp-dirs
+        """
+        self.__del_temp()
+
+    def __del_temp(self):
+        """Delete Temporary Directories
+
+        Normally the context manager is sufficient but this
+        doesn't work with streamlit. Therefore residing with
+        this workaround.
+        """
+        try:
+            shutil.rmtree(self.temp_file)
+        except AttributeError:
+            pass
+
     def __error(self, placeholder, error_msg: str) -> None:
         """Simple helper function
         """
+
         placeholder.error(error_msg)
         time.sleep(2)
         placeholder.empty()
 
     def __check_url(self, url) -> Tuple[bool, str]:
-        """So we don't get any weird, funky links
+        """Check parsed URLs
         """
-        items = [
-            "youtube.com",
-            "youtube.no",
-            "youtube.nl",
-            "youtu.be"
-        ]
-        for check in items:
+
+        for check in YouTubeDownloader.ACCEPTED_LINKS:
             if check in url:
                 self.state.client_config["video_url"] = ""
                 return True, url
@@ -78,7 +100,10 @@ class YouTubeDownloader(Page):
         )
 
     def __process_path(self, path_to_process: Union[Path, str]) -> Path:
-        """
+        """MarkDown compatible download link
+
+        Ensure we create a markdown compatible link
+        for streamlit to share.
         """
         if not isinstance(path_to_process, Path):
             path_to_process = Path(path_to_process)
@@ -96,12 +121,16 @@ class YouTubeDownloader(Page):
         return new_name
 
     def __generate_columns(self, column_number: int = 2):
-        """Generate a few streamlit columns
+        """Generate n streamlit columns
         """
         return st.beta_columns(column_number)
 
     def _make_download(self, placeholder, audio: bool = False) -> None:
-        """As According to:
+        """Create a markdown download
+
+        In order to share files >50mb
+
+        As According to:
         https://github.com/streamlit/streamlit/issues/400
         """
         location = "downloads" + YouTubeDownloader.SEPARATOR + \
@@ -113,7 +142,7 @@ class YouTubeDownloader(Page):
                 f"**[Audio]({location})**")
         else:
             placeholder.success(
-                f"**[Video+Audio]({location})**")
+                f"**[Video & Audio]({location})**")
 
     def _get_video(self, url: str,
                    location: Union[Path, str],
@@ -140,6 +169,45 @@ class YouTubeDownloader(Page):
         self.ytdl_filename = self.__process_path(self.ytdl_filename)
         return True
 
+    def present_items(self, url: str, notification_placeholder, balloon_check):
+
+        self.downloaded = False
+        self.progress_placeholder = st.empty().progress(0)
+
+        with st.spinner('Downloading...'):
+            # Needed to create manually since a contextmanager
+            # Does not work nicely with streamlit
+            self.temp_file = tempfile.mkdtemp(
+                dir=YouTubeDownloader.DOWNLOADS_PATH)
+
+            # Get the video from youtube
+            try:
+                self.downloaded = self._get_video(
+                    url, self.temp_file)
+            except:
+                self.__error(notification_placeholder,
+                             "Could not download the Video :cold_sweat:")
+
+            # Once the video finishes, show the download locations
+            video_col, audio_col = self.__generate_columns()
+            if self.downloaded:
+                with video_col:
+                    self._make_download(st.empty())
+                with audio_col:
+                    self._make_download(st.empty(), audio=True)
+
+                # Show Balloons!
+                if balloon_check:
+                    st.balloons()
+                self.progress_placeholder.empty()
+
+                # Display the video
+                if self.downloaded:
+                    with open(self.ytdl_filename, 'rb') as video_file:
+                        st.video(video_file.read())
+                    st.stop()
+                st.stop()
+
     def write(self) -> None:
         """Start writing the page content
         """
@@ -156,7 +224,6 @@ class YouTubeDownloader(Page):
 
         # Ensure we have some placeholders for our content
         notification_placeholder = st.empty()
-        bar_placeholder = st.empty()
 
         # Remember the previous video, easier session control
         self.state.client_config["video_url"] = video_url
@@ -166,48 +233,15 @@ class YouTubeDownloader(Page):
 
         # Initialize the downloading process if all requirements pass
         if downloading:
+            self.__del_temp()
             if checked:
-                self.downloaded = False
-                self.progress_placeholder = st.empty()
-                self.progress_placeholder.progress(0)
-                with st.spinner('Downloading...'):
-                    self.temp_file = tempfile.mkdtemp(
-                        dir=YouTubeDownloader.DOWNLOADS_PATH)
-                    # with tempfile.TemporaryDirectory(dir=YouTubeDownloader.DOWNLOADS_PATH) as tmpdirname:
-                    try:
-                        # Get the video from youtube
-                        self.downloaded = self._get_video(
-                            url, self.temp_file)
-                    except:
-                        self.__error(notification_placeholder,
-                                     "Could not download the Video :cold_sweat:")
-
-                    video_col, audio_col = self.__generate_columns()
-
-                    if self.downloaded:
-                        with video_col:
-                            self._make_download(st.empty())
-                        with audio_col:
-                            self._make_download(st.empty(), audio=True)
-                        # Show we are done
-                        if balloon_check:
-                            st.balloons()
-                        self.progress_placeholder.empty()
-
-                        # Display the video
-                        if self.downloaded:
-                            with open(self.ytdl_filename, 'rb') as video_file:
-                                st.video(video_file.read())
-                            st.stop()
-                        st.stop()
-
+                self.present_items(
+                    url, notification_placeholder, balloon_check)
             else:
                 if url != "":
                     st.warning(
                         "YouTube only :unamused::point_up:")
                     st.stop()
                 st.stop()
-
         else:
             st.stop()
-        shutil.rmtree(self.temp_file)

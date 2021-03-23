@@ -2,4 +2,4 @@ __pycache__
 .env
 .vscode
 streamlitgb
-**/*test_*.*
+**/test_*.*
