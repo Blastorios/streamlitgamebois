@@ -12,7 +12,7 @@ class Testing(Page):
         st.title("Youtube Video Downloader")
         url = st.text_input(label='URL')
 
-        plaing = st.empty()
+        playing = st.empty()
 
         if url != '':
-            plaing.success(f"[My File]({'downloa/profi_dis_new.mp4'})")
+            playing.success(f"[My File]({'downloa/profi_dis_new.mp4'})")
