@@ -6,6 +6,7 @@ import base64
 import tempfile
 import time
 import platform
+import shutil
 
 from os import rename
 from pathlib import Path
@@ -76,7 +77,7 @@ class YouTubeDownloader(Page):
             int((info['downloaded_bytes']/info['total_bytes'])*100)
         )
 
-    def __process_path(self, audio: bool, path_to_process: Union[Path, str]) -> Path:
+    def __process_path(self, path_to_process: Union[Path, str]) -> Path:
         """
         """
         if not isinstance(path_to_process, Path):
@@ -87,9 +88,12 @@ class YouTubeDownloader(Page):
         #     Path(
         #         directory,
         #         str(old_name).strip().replace('(', '').replace(')', '').replace(" ", "")+old_extension))
-        rename(path_to_process, str(directory) + YouTubeDownloader.SEPARATOR + str(old_name).strip().replace('"', '').replace("'", "").replace('(',
-               '').replace(')', '').replace(" ", "")+old_extension)
-        return path_to_process
+        new_name = str(directory) + YouTubeDownloader.SEPARATOR + str(old_name).strip().replace('"', '').replace("'", "").replace('(',
+                                                                                                                                  '').replace(')', '').replace(" ", "")+old_extension
+
+        # rename(path_to_process, new_name)
+        shutil.move(path_to_process, new_name)
+        return new_name
 
     def __generate_columns(self, column_number: int = 2):
         """Generate a few streamlit columns
@@ -100,8 +104,16 @@ class YouTubeDownloader(Page):
         """As According to:
         https://github.com/streamlit/streamlit/issues/400
         """
-        placeholder.markdown(
-            f"[Download Locally]({self.__process_path(audio, self.ytdl_filename)})")
+        location = "downloads" + YouTubeDownloader.SEPARATOR + \
+            f'{YouTubeDownloader.SEPARATOR}'.join(
+                self.ytdl_filename.split(YouTubeDownloader.SEPARATOR)[-2:])
+
+        if audio:
+            placeholder.success(
+                f"**[Audio]({location})**")
+        else:
+            placeholder.success(
+                f"**[Video+Audio]({location})**")
 
     def _get_video(self, url: str,
                    location: Union[Path, str],
@@ -125,6 +137,7 @@ class YouTubeDownloader(Page):
         with ytdl.YoutubeDL(ydl_opts) as y_dl:
             if ydl_opts['outtmpl']:
                 y_dl.download([url])
+        self.ytdl_filename = self.__process_path(self.ytdl_filename)
         return True
 
     def write(self) -> None:
@@ -158,32 +171,35 @@ class YouTubeDownloader(Page):
                 self.progress_placeholder = st.empty()
                 self.progress_placeholder.progress(0)
                 with st.spinner('Downloading...'):
-                    with tempfile.TemporaryDirectory(dir=YouTubeDownloader.DOWNLOADS_PATH) as tmpdirname:
-                        try:
-                            # Get the video from youtube
-                            self.downloaded = self._get_video(
-                                url, tmpdirname)
-                        except:
-                            self.__error(notification_placeholder,
-                                         "Could not download the Video :cold_sweat:")
+                    self.temp_file = tempfile.mkdtemp(
+                        dir=YouTubeDownloader.DOWNLOADS_PATH)
+                    # with tempfile.TemporaryDirectory(dir=YouTubeDownloader.DOWNLOADS_PATH) as tmpdirname:
+                    try:
+                        # Get the video from youtube
+                        self.downloaded = self._get_video(
+                            url, self.temp_file)
+                    except:
+                        self.__error(notification_placeholder,
+                                     "Could not download the Video :cold_sweat:")
 
-                        video_col, audio_col = self.__generate_columns()
+                    video_col, audio_col = self.__generate_columns()
 
+                    if self.downloaded:
+                        with video_col:
+                            self._make_download(st.empty())
+                        with audio_col:
+                            self._make_download(st.empty(), audio=True)
+                        # Show we are done
+                        if balloon_check:
+                            st.balloons()
+                        self.progress_placeholder.empty()
+
+                        # Display the video
                         if self.downloaded:
-                            with video_col:
-                                self._make_download(st.empty())
-                            with audio_col:
-                                self._make_download(st.empty())
-                            # Show we are done
-                            if balloon_check:
-                                st.balloons()
-                            self.progress_placeholder.empty()
-
-                            # Display the video
-                            if downloaded:
-                                with open(self.ytdl_filename, 'rb') as video_file:
-                                    st.video(video_file.read())
-                                st.stop()
+                            with open(self.ytdl_filename, 'rb') as video_file:
+                                st.video(video_file.read())
+                            st.stop()
+                        st.stop()
 
             else:
                 if url != "":
@@ -194,3 +210,4 @@ class YouTubeDownloader(Page):
 
         else:
             st.stop()
+        shutil.rmtree(self.temp_file)
