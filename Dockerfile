@@ -22,4 +22,3 @@ RUN python -m spacy download en_core_web_sm \
 RUN apt-get update && apt-get install -y procps libsm6 libxext6 libxrender-dev libglib2.0-0 git ffmpeg
 
 ENTRYPOINT [ "/bin/bash", "scripts/setupContainer.sh" ]
-

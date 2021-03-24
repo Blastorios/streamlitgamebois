@@ -7,7 +7,7 @@ from state import provide_state
 st.set_page_config(
     page_title='GameBois Service',
     # page_icon = favicon,
-    # layout='wide',
+    layout='wide',
     initial_sidebar_state='auto')
 
 add_custom_css()
